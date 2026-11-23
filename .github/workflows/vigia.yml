@@ -1,0 +1,65 @@
+name: Vigia de limites (OneDrive -> GitHub)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # a cada 5 min (UTC); o GitHub pode atrasar em horários de pico
+  workflow_dispatch:         # botão "Run workflow" e gatilho externo (cron-job.org)
+
+# Nunca roda duas verificações ao mesmo tempo
+concurrency:
+  group: vigia-limites
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Compila o validador da linguagem .dw a partir do código-fonte (sem binário no repo)
+      - name: Compilar dw.jar
+        run: |
+          javac -d "$RUNNER_TEMP/dw" dw/src/dw/*.java
+          printf 'Main-Class: dw.Main\n' > "$RUNNER_TEMP/manifest.txt"
+          jar cfm "$RUNNER_TEMP/dw.jar" "$RUNNER_TEMP/manifest.txt" -C "$RUNNER_TEMP/dw" .
+
+      - name: Verificar arquivo e publicar
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_REFRESH_TOKEN: ${{ secrets.MS_REFRESH_TOKEN }}
+          MS_TENANT: ${{ vars.MS_TENANT || 'consumers' }}
+          ONEDRIVE_PASTA: ${{ vars.ONEDRIVE_PASTA || 'Limites' }}
+          ONEDRIVE_ARQUIVO: ${{ vars.ONEDRIVE_ARQUIVO || 'tanques.dw' }}
+          DW_JAR: ${{ runner.temp }}/dw.jar
+          DESTINO_REPO: ${{ vars.DESTINO_REPO }}
+          DESTINO_ARQUIVO: ${{ vars.DESTINO_ARQUIVO || 'config/limites.json' }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOVO_TOKEN_ARQ: ${{ runner.temp }}/novo_token
+        run: python transpilador.py
+
+      # A Microsoft entrega um refresh token novo a cada uso. Guardamos o mais
+      # recente no Secret para a autorização nunca expirar.
+      - name: Renovar MS_REFRESH_TOKEN
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          ARQ: ${{ runner.temp }}/novo_token
+        run: |
+          if [ -s "$ARQ" ]; then
+            gh secret set MS_REFRESH_TOKEN --repo "$GITHUB_REPOSITORY" < "$ARQ"
+            rm -f "$ARQ"
+            echo "Token renovado."
+          fi

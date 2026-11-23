@@ -1,0 +1,10 @@
+VazaoMin: 50
+
+Tanque 1
+VazaoMinn: 200
+NivelMax: noventa
+
+Tanque 2
+NivelMax: 150
+NivelMin: 80
+NivelMin: 70

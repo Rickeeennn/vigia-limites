@@ -1,0 +1,14 @@
+# Limites de alerta dos tanques
+# Tudo depois do # e so anotacao, o sistema ignora.
+
+Todos os tanques:
+VazaoMin: 200
+NivelMax: 90
+
+Tanque 1
+VazaoMin: 200
+NivelMax: 90
+
+Tanque 2
+VazaoMin: 100
+NivelMax: 100
