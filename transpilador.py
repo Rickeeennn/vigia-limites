@@ -90,8 +90,19 @@ class OneDrive:
         req = urllib.request.Request(f"{self.GRAPH}{caminho}", data=corpo, method=metodo,
                                      headers={"Authorization": f"Bearer {self.token}",
                                               "Content-Type": tipo})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return r.read()
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise  # tratado por quem chamou
+            try:
+                erro = json.loads(e.read() or b"{}").get("error", {})
+            except ValueError:
+                erro = {}
+            raise RuntimeError(
+                f"OneDrive respondeu {e.code} em {metodo} {caminho.split('?')[0]}: "
+                f"{erro.get('code', '')} {erro.get('message', '')[:200]}".strip()) from None
 
     @staticmethod
     def _caminho(pasta: str, nome: str = "") -> str:
@@ -99,12 +110,20 @@ class OneDrive:
         return "/me/drive/root:/" + urllib.parse.quote(alvo)
 
     def baixar(self, pasta: str, nome: str) -> bytes | None:
+        # 1) Pede os metadados do arquivo, que trazem um link de download temporário.
         try:
-            return self._req("GET", self._caminho(pasta, nome) + ":/content")
+            meta = json.loads(self._req("GET", self._caminho(pasta, nome)))
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
             raise
+        url = meta.get("@microsoft.graph.downloadUrl")
+        if not url:
+            raise RuntimeError(f"'{nome}' existe no OneDrive, mas não é um arquivo (é uma pasta?).")
+        # 2) Baixa SEM o cabeçalho Authorization: o link já é autorizado e o
+        #    servidor de download do OneDrive pessoal recusa (401) se ele for enviado.
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=60) as r:
+            return r.read()
 
     def enviar(self, pasta: str, nome: str, conteudo: bytes) -> None:
         self._req("PUT", self._caminho(pasta, nome) + ":/content", conteudo, "text/plain; charset=utf-8")
