@@ -47,19 +47,8 @@ jobs:
           DESTINO_REPO: ${{ vars.DESTINO_REPO }}
           DESTINO_ARQUIVO: ${{ vars.DESTINO_ARQUIVO || 'config/limites.json' }}
           GH_PAT: ${{ secrets.GH_PAT }}
-          NOVO_TOKEN_ARQ: ${{ runner.temp }}/novo_token
         run: python transpilador.py
 
-      # A Microsoft entrega um refresh token novo a cada uso. Guardamos o mais
-      # recente no Secret para a autorização nunca expirar.
-      - name: Renovar MS_REFRESH_TOKEN
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-          ARQ: ${{ runner.temp }}/novo_token
-        run: |
-          if [ -s "$ARQ" ]; then
-            gh secret set MS_REFRESH_TOKEN --repo "$GITHUB_REPOSITORY" < "$ARQ"
-            rm -f "$ARQ"
-            echo "Token renovado."
-          fi
+      # Renovação automática do MS_REFRESH_TOKEN desativada.
+      # Quando o token expirar (erro invalid_grant no log), gere outro com
+      # autorizar.py e atualize o Secret MS_REFRESH_TOKEN manualmente.
